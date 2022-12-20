@@ -1,0 +1,26 @@
+-- FUNCTION: public.addcustomeractionhistory(integer, bigint, character varying, bigint, timestamp without time zone, timestamp without time zone)
+
+-- DROP FUNCTION IF EXISTS public.addcustomeractionhistory(integer, bigint, character varying, bigint, timestamp without time zone, timestamp without time zone);
+
+CREATE OR REPLACE FUNCTION public.addcustomeractionhistory(
+	actiontype integer,
+	affectedid bigint,
+	comment character varying,
+	createdbyid bigint,
+	createddatenow timestamp without time zone,
+	createdlocaltime timestamp without time zone)
+    RETURNS integer
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+AS $BODY$
+BEGIN
+	 INSERT INTO "CustomerActionHistory"
+	 ("ActionType","AffectedId","Comment","CreatedBy","CreatedDate","IsDeleted","CreatedLocalTime")
+	  Values (actionType,affectedId,comment,createdById,createdDateNow,False,createdLocalTime);
+	  return 1;
+END
+$BODY$;
+
+ALTER FUNCTION public.addcustomeractionhistory(integer, bigint, character varying, bigint, timestamp without time zone, timestamp without time zone)
+    OWNER TO suraj;

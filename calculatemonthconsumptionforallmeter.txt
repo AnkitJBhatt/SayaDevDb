@@ -1,0 +1,360 @@
+-- FUNCTION: public.calculatemonthconsumptionforallmeter(timestamp without time zone, timestamp without time zone, timestamp without time zone)
+
+-- DROP FUNCTION IF EXISTS public.calculatemonthconsumptionforallmeter(timestamp without time zone, timestamp without time zone, timestamp without time zone);
+
+CREATE OR REPLACE FUNCTION public.calculatemonthconsumptionforallmeter(
+	sdate timestamp without time zone,
+	edate timestamp without time zone,
+	currentdate timestamp without time zone)
+    RETURNS SETOF refcursor 
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+	declare incr int:=0;
+	declare tableOfData refcursor;					
+	BEGIN
+			IF iftableexists('MonthDates') THEN
+			 DROP TABLE MonthDates;
+			END IF;
+
+				create TEMPORARY table MonthDates
+				(
+					"InvoiceNumber" bigint,
+					"Consumption" float,
+					"MeterNumber" varchar(200) default '',
+					"WaterMeterId" bigint,
+					"Id" bigint,
+					"FullName" varchar(100),
+					"Email" varchar(50),
+					"Apartment" varchar(20),
+					"Address" varchar(1024),
+					"ZipCode" varchar(50),
+					"City" varchar(100),
+					"StateAbb" varchar(50),
+					"TotalAmount" float,
+					"msg" varchar(250),
+					"volumeTierType" int,
+					"AccountType" int,
+					"AccountId" bigint,
+					"PreviousMonthConsumption" float,
+					"PreviousMonthAmount" float,
+					"LotSize" BigInt,
+					"TypeOfBill" bigint,
+					"BillingAlgoId" int,
+					"BudgetOfBilling" int,
+					"BillingPeriodDays" int,
+					"StartDate" Date,
+					"EndDate" Date,
+					"TotalTenants" int,
+					"IsTestingBill" boolean,
+					"PhoneNo" varchar(50),
+					"PreviousReading" float,
+					"CurrentReading" float,
+					"CheckPayableName" varchar(100),
+					"MailCheckToAddress" varchar(1000)
+				);
+				IF iftableexists('TempDataa') THEN
+				  DROP TABLE TempDataa;
+				END IF;
+				create TEMPORARY table TempDataa
+				(
+					MeterNumber varchar(200) default '',
+					TotalFlow Float,
+					MeterLocalTime int,
+					GatewayMAC varchar(200) default '',
+					StartDate Date,
+					EndDate Date,
+					IsTestingBill boolean,
+					PreviousReading float,
+					CurrentReading float
+				);
+				IF iftableexists('TemppDatess') THEN
+				  DROP TABLE TemppDatess;
+				END IF;
+				create TEMPORARY table TemppDatess
+				(
+					StartDate Date,
+					EndDate Date,
+					MeterNumber varchar(200) default '',
+					ResidentialSmartGateway varchar(200) default '',
+					IsTestingBill boolean
+				);
+				-- Create temp table for totalcounttenant
+				IF iftableexists('tenantCount') THEN
+				  DROP TABLE tenantCount;
+				END IF;
+
+				create TEMPORARY table tenantCount
+				(
+					TotalTenants integer,
+					AccountId bigint
+				);
+
+					insert into TemppDatess(StartDate,EndDate,MeterNumber,ResidentialSmartGateway,IsTestingBill) 
+	 select
+					 -- cast('2021-03-18' as date),cast('2021-05-16' as date)
+					cast(coalesce(RWM."LastBillDate" + INTERVAL '1 day', RT."MoveIn") as date) as StartDate
+					,(date_trunc('month', cast(coalesce(RWM."LastBillDate" + INTERVAL '1 day', RT."MoveIn") as date)) + interval '1 month' - interval '1 day')::date as ENDate
+						,RWM."MeterNumber"
+						,RS."GatewayMAC"
+						,false
+						from "Residential_WaterMeter" RWM
+						inner join "Residential_TenentView" RT on RT."Id"=RWM."ResidentialTenentId"
+						inner join "Residential_SmartGateway" RS on RT."ResidentialSmartGatewayId"=RS."Id" and RS."IsDeleted"=false
+						inner join "CustomerLocationsView" CL on CL."Id"=RS."CustomerLocationId"  and CL."IsDeleted"=false
+						inner join "Account" AC on AC."CustomerId"=CL."CustomerId"
+						where  RWM."IsDeleted"=false and AC."BillingPeriodDays"!=0
+						and RT."IsMoveIn"=true
+						and AC."IsVerifyLicenceKey"=true
+						and (date_trunc('month', cast(coalesce(RWM."LastBillDate" + 
+															  INTERVAL '1 day', RT."MoveIn") as date)) + interval '1 month' - interval '1 day')::date
+						<(date_trunc('month', getutcdate()) + interval '1 month' - interval '1 day')::date;
+
+	-- 				insert into TemppDatess(StartDate,EndDate,MeterNumber,ResidentialSmartGateway,IsTestingBill) 
+	-- 				select coalesce(WM."LastBillDate" + INTERVAL '1 day', now() AT TIME ZONE CL."TimeZone" + (-AC."BillingPeriodDays") * INTERVAL '1 day') as StartDate
+	-- 					,coalesce(WM."LastBillDate" + (AC."BillingPeriodDays"+1) * INTERVAL '1 day',now() + INTERVAL '-1 day' ) AT TIME ZONE CL."TimeZone" as ENDate
+	-- 					,WM."MeterNumber"
+	-- 					,SG."GatewayMAC"
+	-- 					,false
+	-- 					from "WaterMeterView" WM
+	-- 					inner join "CustomerLocationsView" CL on CL."CustomerId"=WM."CustomerId" and WM."IsDeleted"=false and CL."IsDeleted"=false
+	-- 					inner join "Account" AC on AC."CustomerId"=CL."CustomerId"
+	-- 					inner join "SmartGatewayView" SG on SG."CustomerLocationId"=CL."Id" and SG."IsDeleted"=false
+	-- 					and (EXTRACT(epoch from AGE(cast(now() AT TIME ZONE CL."TimeZone" as date),coalesce(WM."LastBillDate", (now() AT TIME ZONE CL."TimeZone") + (-AC."BillingPeriodDays"-1) * INTERVAL '1 day'))) / 86400)::int>  AC."BillingPeriodDays"
+	-- 					where  WM."IsDeleted"=false and AC."BillingPeriodDays"!=0 ;
+						insert into TempDataa(MeterNumber,TotalFlow,MeterLocalTime,GatewayMAC,StartDate,EndDate,IsTestingBill
+										  ,PreviousReading,CurrentReading)
+						select 
+						TemppDatess.MeterNumber
+						,0
+						,EXTRACT(MONTH FROM TemppDatess.EndDate)
+						,TemppDatess.ResidentialSmartGateway
+						,TemppDatess.StartDate
+						,TemppDatess.EndDate
+						,TemppDatess.IsTestingBill
+						,0
+						,0
+						from TemppDatess;
+
+						raise notice '2a154';
+						update TempDataa WM set PreviousReading=
+						 coalesce(( select ROUND("TotalFlow"::decimal,3) from "WaterMeterRawData" where "MeterNumber"=WM.MeterNumber
+												 and "gw"=WM.GatewayMAC 
+												 and cast("MeterLocalTime" as date)<cast(WM.StartDate as date)
+												 order by "MeterLocalTime" desc limit 1),0),
+												 CurrentReading=
+						 coalesce(( select ROUND("TotalFlow"::decimal,3) from "WaterMeterRawData" where "MeterNumber"=WM.MeterNumber
+												 and "gw"=WM.GatewayMAC 
+												 and cast("MeterLocalTime" as date)<=cast(WM.EndDate as date)
+												order by "MeterLocalTime" desc limit 1),0)
+												where WM.PreviousReading=0 or WM.CurrentReading=0;
+												  -- group by TempDataa.MeterNumber,TempDataa.GatewayMAC;
+
+						update TempDataa WM set	TotalFlow=
+									 coalesce(( select ROUND(SUM("Flow")::decimal,3) from "WaterMeterRawData" 
+										where "MeterNumber"=WM.MeterNumber
+												 and "gw"=WM.GatewayMAC 
+												and cast("MeterLocalTime" as date) >= CAST(WM.StartDate as date)
+												and cast("MeterLocalTime" as date) <= CAST(WM.EndDate as date)),0);
+
+						insert into TempDataa(MeterNumber,TotalFlow,MeterLocalTime,GatewayMAC,StartDate,EndDate,IsTestingBill
+										  ,PreviousReading,CurrentReading)
+						select 
+						TemppDatess.MeterNumber
+						,0
+						,EXTRACT(MONTH FROM TemppDatess.EndDate)
+						,TemppDatess.ResidentialSmartGateway
+						,TemppDatess.StartDate
+						,TemppDatess.EndDate
+						,TemppDatess.IsTestingBill
+						,0
+						,0
+						from TemppDatess;
+
+						update TempDataa WM set PreviousReading=
+						 coalesce(( select ROUND("tf"::decimal,3) from "WaterMeterFlowReport" 
+												where "meterNumber"=WM.MeterNumber
+												 and "gw"=WM.GatewayMAC 
+												 and cast("meterLocalTime" as date)<cast(WM.StartDate as date)
+												-- and ROUND("tf"::decimal,3)=0	
+												order by "meterLocalTime" desc limit 1),0),
+												 CurrentReading=
+									 coalesce(( select ROUND("tf"::decimal,3) from "WaterMeterFlowReport" 
+										where "meterNumber"=WM.MeterNumber
+												 and "gw"=WM.GatewayMAC 
+												 and cast("meterLocalTime" as date)<=cast(WM.EndDate as date)
+												-- and ROUND("tf"::decimal,3)=0
+												order by "meterLocalTime" desc limit 1),0)											 
+												where WM.PreviousReading=0 or WM.CurrentReading=0 ;
+												  -- group by TempDataa.MeterNumber,TempDataa.GatewayMAC;
+							update TempDataa WM set	TotalFlow=
+									 coalesce(( select ROUND(SUM("flow")::decimal,3) from "WaterMeterFlowReport" 
+										where "meterNumber"=WM.MeterNumber
+												 and "gw"=WM.GatewayMAC 
+												and cast("meterLocalTime" as date) >= CAST(WM.StartDate as date)
+												and cast("meterLocalTime" as date) <= CAST(WM.EndDate as date)),0);
+					-- ELSE
+						raise notice '2154aa';
+					-- END IF;
+
+					BEGIN
+					select into incr count('Id') from "AccountCustomerMonthlyBilling";
+					END;
+					if(incr<=1)then
+						incr :=0;
+					end if;
+
+					insert into MonthDates("InvoiceNumber","Consumption","MeterNumber","WaterMeterId","Id","FullName"
+										   ,"Email","Apartment","Address","ZipCode"
+					,"City","StateAbb","TotalAmount","msg","volumeTierType","AccountType","AccountId","PreviousMonthConsumption"
+										   ,"PreviousMonthAmount","LotSize","TypeOfBill","BillingAlgoId",
+										   "BudgetOfBilling","BillingPeriodDays"
+					,"StartDate","EndDate","TotalTenants","IsTestingBill","PhoneNo","PreviousReading","CurrentReading"
+										   ,"CheckPayableName","MailCheckToAddress") 
+						select 																																		  
+						 -- floor(rand()*RW."MeterNumber"-1)
+						 (190000+incr+ROW_NUMBER() OVER (ORDER BY RW."MeterNumber",RT."CustomerId"))			  
+						 ,coalesce(ROUND(SUM(WRD.TotalFlow)::decimal,3),0)
+						,RW."MeterNumber"
+						,MAX(RW."Id")
+						,RT."CustomerId" 
+						,MAX(RT."TenentName")
+						,MAX(RT."Email")
+						,MAX(coalesce(RT."Apartment",''))
+						,MAX(CL."Address") as Address
+						,MAX(CL."ZipCode") as ZipCode
+						,MAX(c."Name") as City
+						,MAX(s."Abbreviation") as StateAbb
+						,0
+						,0
+						-- ,(
+						-- 	select totalBill from dbo.[CalculationOfBillingDataForLA](ISNULL(ROUND(SUM(WRD.TotalFlow),3),0),'',MONTH(@StartDate),YEAR(@StartDate),MAX(CL.ZipCode),7499)
+						-- ) as TotalAmount
+						-- ,(
+						-- 	select msg from dbo.[CalculationOfBillingDataForLA](ISNULL(ROUND(SUM(WRD.TotalFlow),3),0),'',MONTH(@StartDate),YEAR(@StartDate),MAX(CL.ZipCode),7499)
+						-- ) as msg
+						  ,0 as volumeTierType					
+						,cast(1 as int)
+						,MAX(AC."Id") as AccountId
+						,coalesce((select "TotalConsumptionInMonth" from "AccountCustomerMonthlyBilling" where "AccountCustomerMonthlyBilling"."MeterNumber"=RW."MeterNumber" and "CustomerId"=RT."CustomerId" order by "AccountCustomerMonthlyBilling"."Id" desc limit 1),0)
+						,coalesce((select "AccountCustomerMonthlyBilling"."TotalAmount" from "AccountCustomerMonthlyBilling" where "AccountCustomerMonthlyBilling"."MeterNumber"=RW."MeterNumber" and "CustomerId"=RT."CustomerId"  order by "AccountCustomerMonthlyBilling"."Id" desc limit 1),0)
+						,0
+						-- ,(case when MAX(c."Id") in (6,3962,4377) then 748 else 748 end) 
+						-- ,(case when MAX(c."Id") in (6,3962,4377) then 1 when MAX(c."Id") in (13,3700,3864) then 2 else 0 end)
+						,748 
+						,MAX(AC."UtilityEnumId")
+						,MAX(CL."BudgetOfBilling") as BudgetOfBilling
+						,MAX(AC."BillingPeriodDays") as BillingPeriodDays
+						,MAX(WRD.StartDate)
+						,MAX(WRD.EndDate)
+						,0
+						,MAX(WRD.IsTestingBill::int)::boolean
+						,MAX(Ac."AccountPhoneNumber")
+						,MAX(WRD.PreviousReading)
+						,MAX(WRD.CurrentReading)
+						,MAX(AC."CheckPayableName")
+						,MAX(AC."MailCheckToAddress")
+						 from TempDataa  WRD
+						inner join "Residential_WaterMeterView" RW on RW."MeterNumber"=WRD.MeterNumber and RW."IsDeleted"=false
+						inner join "Residential_TenentView" RT on RT."Id"=RW."ResidentialTenentId"  and RT."IsDeleted"=false 
+						inner join "Residential_SmartGatewayView" RS on RS."Id"=RT."ResidentialSmartGatewayId" and WRD.GatewayMAC=RS."GatewayMAC" and RS."IsDeleted"=false
+						inner join "CustomerLocationsView" CL on CL."Id"=RS."CustomerLocationId"  and CL."IsDeleted"=false
+						inner join "AccountView" AC on AC."CustomerId"=CL."CustomerId" and AC."IsDeleted"=false
+						inner join "CityView" c on c."Id"=CL."CityId" and c."IsDeleted"=false
+						inner join "StateView" s on s."Id"=c."StateId" and s."IsDeleted"=false
+						where RW."IsDeleted"=false
+						group by RW."MeterNumber",RT."CustomerId" 
+						order by RW."MeterNumber"; 
+					BEGIN
+						select into incr count(*)+incr from MonthDates;
+					END;
+					raise notice '2154aaa';
+					if(incr<=1)then
+						incr :=0;
+					end if;
+
+					-- insert Tenant Count
+					insert into  tenantCount(TotalTenants,AccountId) 
+					select count(RT."Id"),CUST."AccountId"
+					from "Residential_Tenent" RT
+					inner join "Residential_SmartGateway" RG on RG."Id"=RT."ResidentialSmartGatewayId"
+					inner join "CustomerLocations" CL on Cl."Id"=RG."CustomerLocationId"
+					Inner join "Customer" CUST on CUST."Id"=CL."CustomerId"
+					where CUST."AccountId" in (select  "AccountId" from MonthDates ) and RT."IsDeleted"=false
+					and RG."IsDeleted"=false and CL."IsDeleted"=false and CUST."IsDeleted"=false
+					group by CUST."AccountId";
+					-- Update Tenant Count
+					raise notice '2154aaa';
+					update MonthDates set "TotalTenants"=tenantCount.TotalTenants
+					from tenantCount where tenantCount.accountId=MonthDates."AccountId";
+
+	-- 				raise notice '2154aasd';
+	-- 				insert into MonthDates("InvoiceNumber","Consumption","MeterNumber","WaterMeterId","Id","FullName"
+	-- 									   ,"Email","Apartment","Address","ZipCode"
+	-- 				,"City","StateAbb","TotalAmount","msg","volumeTierType","AccountType","AccountId","PreviousMonthConsumption"
+	-- 									   ,"PreviousMonthAmount","LotSize","TypeOfBill","BillingAlgoId",
+	-- 									   "BudgetOfBilling","BillingPeriodDays"
+	-- 				,"StartDate","EndDate","TotalTenants","IsTestingBill","PhoneNo","PreviousReading","CurrentReading"
+	-- 									   ,"CheckPayableName","MailCheckToAddress") 
+	-- 					select 
+	-- 					 -- floor(rand()*RW."MeterNumber"-1)
+	-- 					 (190000+incr+ROW_NUMBER() OVER (ORDER BY WM."MeterNumber",WM."CustomerId"))			  
+	-- 					 ,coalesce(ROUND(MAX(WRD.TotalFlow)::decimal,3),0)
+	-- 					,WM."MeterNumber"
+	-- 					,MAX(WM."Id")
+	-- 					,WM."CustomerId" 
+	-- 					,MAX(CUST."FullName")
+	-- 					,MAX(CUST."Email")
+	-- 					,MAX(coalesce(CUST."Apartment",''))
+	-- 					,MAX(CL."Address") as Address
+	-- 					,MAX(CL."ZipCode") as ZipCode
+	-- 					,MAX(c."Name") as City
+	-- 					,MAX(s."Abbreviation") as StateAbb
+	-- 					,0
+	-- 					,0
+	-- 					  ,0 as volumeTierType					
+	-- 					,CASE WHEN MAX(CUST."AccountType")=5 THEN cast(0 as int) ELSE cast(2 as int) END
+	-- 					,MAX(AC."Id") as AccountId
+	-- 					,coalesce((select "TotalConsumptionInMonth" from "AccountCustomerMonthlyBilling" where "AccountCustomerMonthlyBilling"."MeterNumber"=WM."MeterNumber" and "CustomerId"=MAX(CUST."Id") limit 1),0)
+	-- 					,coalesce((select "AccountCustomerMonthlyBilling"."TotalAmount" from "AccountCustomerMonthlyBilling" where "AccountCustomerMonthlyBilling"."MeterNumber"=WM."MeterNumber" and "CustomerId"=MAX(CUST."Id") limit 1),0)
+	-- 					,0
+	-- 					-- ,(case when MAX(c."Id") in (6,3962,4377) then 748 else 748 end) 
+	-- 					-- ,(case when MAX(c."Id") in (6,3962,4377) then 1 when MAX(c."Id") in (13,3700,3864) then 2 else 0 end)
+	-- 					,748 
+	-- 					,MAX(AC."UtilityEnumId")
+	-- 					,MAX(CL."BudgetOfBilling") as BudgetOfBilling
+	-- 					,MAX(AC."BillingPeriodDays") as BillingPeriodDays
+	-- 					,MAX(WRD.StartDate)
+	-- 					,MAX(WRD.EndDate)
+	-- 					,0
+	-- 					,MAX(WRD.IsTestingBill::int)::boolean
+	-- 					,MAX(Ac."AccountPhoneNumber")
+	-- 					,MAX(WRD.PreviousReading)
+	-- 					,MAX(WRD.CurrentReading)
+	-- 					,MAX(AC."CheckPayableName")
+	-- 					,MAX(AC."MailCheckToAddress")
+	-- 					 from TempDataa  WRD
+	-- 					inner join "WaterMeterView" WM on WM."MeterNumber"=WRD.MeterNumber and WM."IsDeleted"=false
+	-- 					inner join "CustomersView" CUST on CUST."Id"=WM."CustomerId" and CUST."IsDeleted"=false -- and WM."CustomerId" not in(select CustomerId from AccountCustomerMonthlyBilling where MONTH(AccountCustomerMonthlyBilling.BillDate)=MONTH(@StartDate) and YEAR(AccountCustomerMonthlyBilling.BillDate)=YEAR(@StartDate))
+	-- 					inner join "SmartGatewayView" SG on SG."GatewayMAC"=WRD.GatewayMAC and SG."IsDeleted"=false
+	-- 					inner join "CustomerLocationsView" CL on CUST."Id"=CL."CustomerId" and CL."IsDeleted"=false
+	-- 					inner join "AccountView" AC on AC."Id"=CUST."AccountId" and AC."IsDeleted"=false
+	-- 					inner join "CityView" c on c."Id"=CL."CityId" and c."IsDeleted"=false
+	-- 					inner join "StateView" s on s."Id"=c."StateId" and s."IsDeleted"=false
+	-- 					where WM."IsDeleted"=false 
+	-- 					group by WM."MeterNumber",WM."CustomerId" 
+	-- 					order by WM."MeterNumber"; 
+
+						raise notice '2154adasdqwe';
+					open tableOfData for
+					select * from MonthDates where MonthDates."BillingAlgoId" > 0;
+					return next tableOfData;
+	END
+	
+$BODY$;
+
+ALTER FUNCTION public.calculatemonthconsumptionforallmeter(timestamp without time zone, timestamp without time zone, timestamp without time zone)
+    OWNER TO suraj;

@@ -1,0 +1,281 @@
+-- FUNCTION: public.addmeteranddeviceusingscanner(bigint, bigint, character varying, character varying, bigint, character varying, character varying, bigint, character varying)
+
+-- DROP FUNCTION IF EXISTS public.addmeteranddeviceusingscanner(bigint, bigint, character varying, character varying, bigint, character varying, character varying, bigint, character varying);
+
+CREATE OR REPLACE FUNCTION public.addmeteranddeviceusingscanner(
+	id bigint,
+	accountid bigint,
+	serialnumber character varying,
+	unitno character varying,
+	smartgatewayid bigint,
+	devicemac character varying,
+	devicename character varying,
+	loggedininstallerid bigint,
+	installerimageurl character varying DEFAULT ''::character varying)
+    RETURNS character varying
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+AS $BODY$
+DECLARE 
+	tenentId bigint;
+	resTenentId bigint;
+	deviceId bigint;
+	tenentunitnoExist varchar(200);
+	meterId bigint;
+	customerId bigint;
+	meterExistOrNot varchar(200);
+	deviceExistOrNot varchar(200);
+	ModelNumber varchar(200);
+	MeterType integer;
+	MeterName  varchar(200);
+	resMeterName  varchar(200);
+	customerExistOrNot varchar(200);
+	MeterNumber varchar(200);
+BEGIN
+	
+	
+	IF id<=0
+	THEN
+		select into customerId "Id" from "Customer" where "AccountId"=accountId and "Apartment"=unitno;
+		IF customerId>0
+		THEN
+			return 'Unit No already exists' as message;  
+		ELSE
+			INSERT INTO "public"."Customer"("AccountId","Email","Password","FirstName","LastName","PhoneNumber","Gender","IsParent"
+			,"ParentId","InstallerId","IsActive","InstallDate","ForgotPasswordToken","ConfirmationToken","ForgotPasswordTokenExpiryTime"
+			,"RecalibrationMode","DateTimeFormate","AdultCount","ChildCount","LocationLastSelected","GatewayLastSelected"
+			,"ZoneLastSelected","WaterMeterLastSelected","CreatedBy","CreatedDate","ModifyBy","ModifyDate","IsDeleted"
+			,"AccountType","Apartment","IsFirstTimePopupOpen","ReferralCode","IsConfirm","SuspendedByAccountAdmin"
+			,"ManageValvePermission","ParentAccountId","CustomerContextId","DisplayUnit","MoveIn","MoveOut","IsMoveIn")
+			VALUES
+			(accountid,'','','Unit',unitno,'',1,false,(select "CustomerId" from "Account" where "Id"=accountid limit 1),loggedininstallerid
+			,false,null,'','',null,0,'MM/dd/yyyy hh:mi:ss',0,0,0,0,0,0,loggedininstallerid,GETUTCDATE(),null,null,false,6,unitno,false	,'',false
+			,false,false,null,null,0,null,null,false);
+		
+			select into customerId "Id" from "Customer" where "AccountId"=accountId and "Apartment"=unitno;
+		
+				INSERT INTO "public"."Residential_Tenent"
+			("ResidentialSmartGatewayId","ResidentialRepeaterId","CustomerId","Email","Password","FirstName"
+			,"LastName","PhoneNumber","Gender","IsParent","ParentId","InstallerId","IsActive","InstallDate"
+			,"ForgotPasswordToken","ConfirmationToken","ForgotPasswordTokenExpiryTime","RecalibrationMode"
+			,"DateTimeFormate","AdultCount","ChildCount","LocationLastSelected","GatewayLastSelected","ZoneLastSelected"
+			,"WaterMeterLastSelected","AccountType","Apartment","IsFirstTimePopupOpen","ReferralCode"
+			,"CurrentUserMode","IsConfirm","SuspendedByAccountAdmin","ManageValvePermission","ValveStatus"
+			,"TodayConsumption","TodayDate","YesterDayConsumption","YesterDayDate","ThisWeekConsumption"
+			,"ThisWeekDate","ThisMonthConsumption","ThisMonthDate","ThisYearConsumption","ThisYearDate"
+			,"GrandConsumption","DeviceId","CreatedBy","CreatedDate","ModifyBy","ModifyDate","IsDeleted"
+			,"Residential_Repeater_Id","DisplayUnit","BudgetOfBilling","BillingPeriodDays","MoveIn"
+			,"MoveOut","IsMoveIn")
+		VALUES
+			(smartgatewayid,null,customerId,'','','Unit',unitno,'',0,false,0,0,false,null,'','',null,0,'MM/dd/yyyy hh:mi:ss',0,0,0	,0,0,0,6,
+			 unitno
+			,true,'',0,false,false,false,0,0,null,0,null,0,null,0,null,0,null,0,'',loggedInInstallerId
+			,GEtUTCDATE(),null,null,false,0,0,0,0,null,null,false);
+			
+		insert into "CustomerInRoleView"
+		("CustomerId","RoleId","CreatedBy","CreatedDate","ModifyBy","ModifyDate","IsDeleted")
+		values(customerId,9,1,GETUTCDATE(),null,null,false);	
+			return
+				 'Success' as message;
+		END IF;
+		
+	ELSE
+		IF SerialNumber is null
+		THEN
+			return
+				 'Success' as message;
+		END iF;
+		
+	END IF;
+	
+	-- Check meter is exist or not in manufacture
+	select into MeterNumber,ModelNumber,MeterType "MeterNumber","Model","MeterType"
+	from "ManufacturesMeter" where "SerialNumber"=SerialNumber;
+	
+	IF MeterNumber!=null or MeterNumber!=''
+	THEN
+		-- Check meter is added or not 
+		select into tenentId ,tenentunitnoExist,meterId,customerId,MeterName
+		RT."Id",RT."Apartment",RW."Id",RW."Id",RT."CustomerId",'Unit '||RT."Apartment" 
+		from "Residential_Tenent" RT
+		inner join "Residential_WaterMeter" RW on RW."ResidentialTenentId"=RT."Id"
+		where RW."SerialNumber"=SerialNumber;
+		
+		IF 	tenentId>0
+		then
+			-- Check This meter is assign with same tenent or other
+			IF tenentunitnoExist=unitno
+			then
+				if DeviceMAC is null or DeviceMAC=''
+				THEN
+				return 'Success' as message;
+				END IF;
+				-- Check device is exist or not in manufacture
+				select into deviceExistOrNot "DeviceMAC"
+				from "ManufacturesDevice" where "DeviceMAC"=DeviceMAC;
+				IF deviceExistOrNot!=null or deviceExistOrNot!=''
+				THEN
+					-- Check device is added or not 
+					select into deviceId,tenentunitnoExist,MeterName 
+					RW."Id",RT."Apartment",'Unit '||RT."Apartment"
+					from "Residential_Tenent" RT
+					inner join "Residential_Device" RW on RW."ResidentialTenentId"=RT."Id"
+					where RW."DeviceMAC"=devicemac;
+					
+					If deviceId>0
+					THEN
+						IF tenentunitnoExist=unitno
+						then
+						-- skip if already exist
+						return 'Success' as message;
+						ELSE
+							-- Return if device exist with other tenent
+							return
+							 devicemac|| ' This DeviceMAC is already assign with ' || MeterName as message;
+							
+						END IF;
+					ELSE
+						-- Insert Residential Device
+						Insert into "Residential_Device"
+						("ResidentialTenentId"
+						,"CustomerId"
+						,"DeviceName"
+						,"DeviceMAC"
+						,"DeviceModeType"
+						,"DeviceType"
+						,"DeviceIP"
+						,"DeviceMode"
+						,"Version"
+						,"Model"
+						,"CreatedBy"
+						,"CreatedDate"
+						,"ModifyBy"
+						,"ModifyDate"
+						,"IsDeleted"
+						,"BatteryLow"
+						,"LastBatteryLowNotification"
+						,"IsValveAutoShutDown"
+						,"InstallerImageURL")
+						values(
+						tenentId,customerId,devicename,devicemac,0,1,NULL,1,null,null,loggedInInstallerId,now(),null,null,false
+						,false,null,false,InstallerImageURL
+						);
+						
+						-- Select inserted device Id for mapping with meter
+						select into deviceId "Id" from "Residential_Device" where "DeviceMAC"=devicemac and "IsDeleted"=false;
+						
+						-- Insert Residential Device ampping with meter
+						Insert into "Residential_MeterDeviceMapping"
+						("ResidentialMeterId"
+						,"ResidentialDeviceId"
+						,"CreatedBy"
+						,"CreatedDate"
+						,"ModifyBy"
+						,"ModifyDate"
+						,"IsDeleted")
+						values(
+						meterId,deviceId,loggedInInstallerId,now(),null,null,false
+						);
+						
+						-- update manufacture list details
+						update "ManufacturesDevice" set "IsAssign"=true where "DeviceMAC"=devicemac;
+						
+						return
+						 'Success' as message;
+						
+					END IF;
+				ELSE
+					return
+					 'Device MAC not exists in manufacturer.' as message;
+					
+				END IF;
+			ELSE
+				return
+				 'This Meter is already assign with ' || MeterName as messages;
+			
+			END IF;
+		else
+			select into resTenentId,resMeterName
+		RT."Id",'Unit '||RT."Apartment" 
+		from "Residential_Tenent" RT
+		where RT."Apartment"=unitno and "ResidentialSmartGatewayId"=smartgatewayid;
+			-- -Insert Meter details
+			Insert into "Residential_WaterMeter"
+			("ResidentialTenentId"
+				,"InstallerId"
+				,"UniqueId"
+				,"SmartId"
+				,"MeterNumber"
+				,"MeterType"
+				,"MeterName"
+				,"ModelNumber"
+				,"SerialNumber"
+				,"DeviceStatus"
+				,"DeviceOperation"
+				,"IsValveAutoShutDown"
+				,"AutoCloseTiming"
+				,"LeakNotificationFrequency"
+				,"NotificationTimings"
+				,"ToleranceLevel"
+				,"VolumeThresholdPercent"
+				,"LastSnoozeTime"
+				,"SnoozeMinute"
+				,"ValveStatus"
+				,"AntiFreezWaterFlowMinute"
+				,"AntiFreezWaterTemprature"
+				,"AntiFreezValveClose"
+				,"IsTemperatureSensorInstalled"
+				,"IsPresureSensorInstalled"
+				,"IsDemoMeter"
+				,"ContinueFlowTime"
+				,"CurrentPressure"
+				,"CurrentTemprature"
+				,"CurrentFlowRate"
+				,"LastDataTime"
+				,"LastEmailTimeForDataNotCome"
+				,"IsInstallWaterTemprature"
+				,"IntialFlowValue"
+				,"CreatedBy"
+				,"CreatedDate"
+				,"ModifyBy"
+				,"ModifyDate"
+				,"IsDeleted"
+				,"BatteryLow"
+				,"ExternalPower"
+				,"BackupBatteryLow"
+				,"TemperatureSensorFunctional"
+				,"FlowSensorFunctional"
+				,"OpenValveError"
+				,"CloseValveError"
+				,"LastBatteryLowNotification"
+				,"CurrentMeterReading"
+				,"WaterUsageType"
+				,"LastValveUpdateDateTime"
+				,"LastBillDate"
+				,"InstallerImageURL")
+				values(
+				resTenentId,loggedInInstallerId,null,null,MeterNumber,1,resMeterName,ModelNumber,serialnumber,0,null,false,null,null,null
+				,1,20,null,null,false,null,null,false,false,false,false,null,null,null,null,null,null,null,0,loggedInInstallerId,now()
+				,null,null,false,false,false,false,false,false,false,false,null,null,1,null,null,InstallerImageURL
+				);
+			-- -update manufcature as assign
+			update "ManufacturesMeter" set "IsAssign"=true where "SerialNumber"=serialnumber;
+			
+			-- Return Success with msg
+			return
+			 'Success' as message;
+			
+		end if;
+		
+	ELSE
+		-- Return faile with msg
+		return
+		 'Meter Number not exists with this serial number in manufacturer.' as message;
+		
+	END IF;
+END
+$BODY$;
+
+ALTER FUNCTION public.addmeteranddeviceusingscanner(bigint, bigint, character varying, character varying, bigint, character varying, character varying, bigint, character varying)
+    OWNER TO suraj;

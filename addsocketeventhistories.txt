@@ -1,0 +1,26 @@
+-- FUNCTION: public.addsocketeventhistories(character varying, boolean, character varying)
+
+-- DROP FUNCTION IF EXISTS public.addsocketeventhistories(character varying, boolean, character varying);
+
+CREATE OR REPLACE FUNCTION public.addsocketeventhistories(
+	meternumber character varying,
+	status boolean,
+	response character varying)
+    RETURNS integer
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+AS $BODY$
+BEGIN
+	 INSERT INTO "SocketEventHistories"
+	 ("MeterNumber"
+      ,"Status"
+      ,"Response"
+      ,"CreatedDate")
+	  Values (meterNumber,status,response,(now() at time zone 'utc'));
+	  return 1;
+END
+$BODY$;
+
+ALTER FUNCTION public.addsocketeventhistories(character varying, boolean, character varying)
+    OWNER TO suraj;

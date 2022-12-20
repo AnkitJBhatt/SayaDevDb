@@ -1,0 +1,29 @@
+-- FUNCTION: public.addsmartgatewaysensorsrecievestatusnotification(character varying, character varying, character varying, character varying, character varying, timestamp without time zone, bigint, bigint, character varying, character varying)
+
+-- DROP FUNCTION IF EXISTS public.addsmartgatewaysensorsrecievestatusnotification(character varying, character varying, character varying, character varying, character varying, timestamp without time zone, bigint, bigint, character varying, character varying);
+
+CREATE OR REPLACE FUNCTION public.addsmartgatewaysensorsrecievestatusnotification(
+	name character varying,
+	smartgatewaymac character varying,
+	nodeid character varying,
+	location character varying,
+	leakage character varying,
+	createddate timestamp without time zone,
+	meterid bigint DEFAULT NULL::bigint,
+	gatewayid bigint DEFAULT NULL::bigint,
+	meternumber character varying DEFAULT NULL::character varying,
+	gatewaymac character varying DEFAULT NULL::character varying)
+    RETURNS integer
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+AS $BODY$
+BEGIN
+	 INSERT INTO SmartGatewaySensorRecieveStatus(Name,SmartGatewayMAC,NodeId,Location,Leakage,CreatedDate,MeterId,MeterNumber,GatewayId,GatewayMac) 
+	 Values (name,smartGatewayMAC,nodeId,location,leakage,createdDate,meterId,meterNumber,gatewayId,gatewayMac);
+	 return 1;
+END
+$BODY$;
+
+ALTER FUNCTION public.addsmartgatewaysensorsrecievestatusnotification(character varying, character varying, character varying, character varying, character varying, timestamp without time zone, bigint, bigint, character varying, character varying)
+    OWNER TO suraj;

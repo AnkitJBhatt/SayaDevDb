@@ -1,0 +1,34 @@
+-- FUNCTION: public.addaccountusersmobilenotification(bigint, character varying, integer, character varying, character varying, character varying, timestamp without time zone, timestamp without time zone, integer, boolean, boolean, timestamp without time zone)
+
+-- DROP FUNCTION IF EXISTS public.addaccountusersmobilenotification(bigint, character varying, integer, character varying, character varying, character varying, timestamp without time zone, timestamp without time zone, integer, boolean, boolean, timestamp without time zone);
+
+CREATE OR REPLACE FUNCTION public.addaccountusersmobilenotification(
+	customerid bigint,
+	comment character varying,
+	flag integer,
+	gatwaymacaddress character varying,
+	notificationmessage character varying,
+	meternumber character varying,
+	notificationsenttime timestamp without time zone,
+	notificationlocaltime timestamp without time zone,
+	notificationsource integer,
+	istest boolean,
+	isviewed boolean,
+	seendatetime timestamp without time zone)
+    RETURNS integer
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+AS $BODY$
+BEGIN
+	 INSERT INTO "AccountUserMobileNotification"
+	 ("CustomerId","GatwayMacAddress","MeterNumber","Flag","NotificationMessage","NotificationSentTime","NotificationLocalTime",
+	 "NotificationSource","Comment","IsTest","IsViewed","SeenDateTime")
+	  Values (CustomerId,GatwayMacAddress,MeterNumber,flag,NotificationMessage,NotificationSentTime,NotificationLocalTime,
+	  NotificationSource,Comment,IsTest,IsViewed,SeenDateTime);
+	  return 1;
+END
+$BODY$;
+
+ALTER FUNCTION public.addaccountusersmobilenotification(bigint, character varying, integer, character varying, character varying, character varying, timestamp without time zone, timestamp without time zone, integer, boolean, boolean, timestamp without time zone)
+    OWNER TO suraj;

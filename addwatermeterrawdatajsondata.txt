@@ -1,0 +1,25 @@
+-- FUNCTION: public.addwatermeterrawdatajsondata(character varying, character varying, character varying, timestamp without time zone)
+
+-- DROP FUNCTION IF EXISTS public.addwatermeterrawdatajsondata(character varying, character varying, character varying, timestamp without time zone);
+
+CREATE OR REPLACE FUNCTION public.addwatermeterrawdatajsondata(
+	gatewaymac character varying,
+	meternumber character varying,
+	filename character varying,
+	localdate timestamp without time zone)
+    RETURNS integer
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+AS $BODY$
+
+BEGIN
+	 INSERT INTO "WaterMeterRawDataJsonData"
+	 ("GatewayMac","MeterNumber","FileName","LocalDate")
+	  Values (gatewaymac,meternumber,filename,localdate);
+	  return 1;
+END
+$BODY$;
+
+ALTER FUNCTION public.addwatermeterrawdatajsondata(character varying, character varying, character varying, timestamp without time zone)
+    OWNER TO suraj;

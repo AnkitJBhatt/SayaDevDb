@@ -1,0 +1,36 @@
+-- FUNCTION: public.addmobilenotification(character varying, integer, character varying, character varying, character varying, timestamp without time zone, timestamp without time zone, integer, boolean, boolean, timestamp without time zone, character varying, integer)
+
+-- DROP FUNCTION IF EXISTS public.addmobilenotification(character varying, integer, character varying, character varying, character varying, timestamp without time zone, timestamp without time zone, integer, boolean, boolean, timestamp without time zone, character varying, integer);
+
+CREATE OR REPLACE FUNCTION public.addmobilenotification(
+	comment character varying,
+	flag integer,
+	gatwaymacaddress character varying,
+	notificationmessage character varying,
+	meternumber character varying,
+	notificationsenttime timestamp without time zone,
+	notificationlocaltime timestamp without time zone,
+	notificationsource integer,
+	istest boolean,
+	isviewed boolean,
+	seendatetime timestamp without time zone,
+	devicemac character varying,
+	sensorreportreason integer)
+    RETURNS integer
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+AS $BODY$
+
+BEGIN
+	 INSERT INTO "MobileNotification"
+	 ("Flag","GatwayMacAddress","MeterNumber","NotificationMessage","NotificationSentTime","NotificationLocalTime"
+	 ,"NotificationSource","Comment","IsTest","IsViewed","SeenDateTime","IsResolve","DeviceMAC","SensorReportReason","ResolveComment")
+	  Values (flag,gatwayMacAddress,meterNumber,notificationMessage,notificationSentTime,notificationLocalTime,
+	  notificationSource,comment,isTest,isViewed,seenDateTime,False,deviceMAC,sensorReportReason,null);
+	  return 1;
+END
+$BODY$;
+
+ALTER FUNCTION public.addmobilenotification(character varying, integer, character varying, character varying, character varying, timestamp without time zone, timestamp without time zone, integer, boolean, boolean, timestamp without time zone, character varying, integer)
+    OWNER TO suraj;

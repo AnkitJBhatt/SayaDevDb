@@ -1,0 +1,29 @@
+-- FUNCTION: public.addwatermetersnoozetimehistory(bigint, character varying, character varying, integer, timestamp without time zone, timestamp without time zone, bigint, timestamp without time zone)
+
+-- DROP FUNCTION IF EXISTS public.addwatermetersnoozetimehistory(bigint, character varying, character varying, integer, timestamp without time zone, timestamp without time zone, bigint, timestamp without time zone);
+
+CREATE OR REPLACE FUNCTION public.addwatermetersnoozetimehistory(
+	customerid bigint,
+	customername character varying,
+	meternumber character varying,
+	snoozeminute integer,
+	snoozestarttime timestamp without time zone,
+	snoozeendtime timestamp without time zone,
+	createdby bigint,
+	createddate timestamp without time zone)
+    RETURNS integer
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+AS $BODY$
+
+BEGIN
+  INSERT INTO "WaterMeterSnoozeHistory"
+  ("CustomerId","CustomerName","MeterNumber","SnoozeMinute","SnoozeStartTime","SnoozeEndTime","CreatedBy","CreatedDate")
+   Values (customerId,customerName,meterNumber,snoozeMinute,snoozeStartTime,snoozeEndTime,createdBy,createdDate);
+	  return 1;
+END
+$BODY$;
+
+ALTER FUNCTION public.addwatermetersnoozetimehistory(bigint, character varying, character varying, integer, timestamp without time zone, timestamp without time zone, bigint, timestamp without time zone)
+    OWNER TO suraj;
